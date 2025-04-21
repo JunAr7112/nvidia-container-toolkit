@@ -180,8 +180,7 @@ test-packaging:
     - !reference [.regctl-setup, before_script]
 
     # We ensure that the OUT_IMAGE_VERSION is set
-    - 'echo Version: ${OUT_IMAGE_VERSION} ; [[ -n "${OUT_IMAGE_VERSION}" ]] || exit 1'
-    - 'echo Version: ${OUT_IMAGE_NAME} ; [[ -n "${OUT_IMAGE_NAME}" ]] || exit 1'
+    - 'echo "Version: ${OUT_IMAGE_VERSION}, Image: ${OUT_IMAGE_NAME}" ; [[ -n "${OUT_IMAGE_VERSION}" && -n "${OUT_IMAGE_NAME}" ]] || exit 1'
 
     # In the case where we are deploying a different version to the CI_COMMIT_SHA, we
     # need to tag the image.
