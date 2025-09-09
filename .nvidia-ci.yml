@@ -229,11 +229,62 @@ push-images-to-staging:
     OUT_IMAGE_NAME: "${NGC_STAGING_REGISTRY}/container-toolkit"
     OUT_IMAGE_TAG: "${CI_COMMIT_SHORT_SHA}"
 
-.publish-images:
+.ngc-publish-variables:
+  before_script:
+    - |
+      if [ -n "${CI_COMMIT_TAG}" ]; then
+        echo "${CI_COMMIT_SHORT_SHA} ${CI_COMMIT_TAG}" >> build-info-${CI_PIPELINE_ID}.txt
+        echo "${CI_COMMIT_SHORT_SHA}-packaging ${CI_COMMIT_TAG}-packaging" >> build-info-${CI_PIPELINE_ID}.txt
+      else
+        echo "${CI_COMMIT_SHORT_SHA} publish-${CI_COMMIT_SHORT_SHA}" >> build-info-${CI_PIPELINE_ID}.txt
+        echo "${CI_COMMIT_SHORT_SHA}-packaging publish-${CI_COMMIT_SHORT_SHA}-packaging" >> build-info-${CI_PIPELINE_ID}.txt
+      fi
+
+.update-nspect:
   stage: ngc-publish
   needs:
-    - scan-images
-    - push-images-to-staging
+    - job: push-images-to-staging
+  extends:
+    - .ngc-publish-variables
+  image: 
+    name: "${CNT_NGC_PUBLISH_IMAGE}"
+    pull_policy: always
+  variables:
+    PROJECT_NAME: "nvidia-container-toolkit"
+    REPO_URL: "https://github.com/NVIDIA/nvidia-container-toolkit.git"
+  script:
+    - |
+      cnt-ngc-publish nspect --versions-file "build-info-${CI_PIPELINE_ID}.txt"
+
+# Update the nspect staging environment to test the nspect publishing logic
+update-nspect-staging:
+  extends:
+    - .update-nspect
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - when: on_success
+  variables:
+    ENV: "stage"
+    RELEASE_VERSION: "test"
+    NSPECT_CLIENT_ID: "${NSPECT_STAGING_CLIENT_ID}" 
+    NSPECT_CLIENT_SECRET: "${NSPECT_STAGING_CLIENT_SECRET}"
+
+# Update the nspect production environment with the new release
+update-nspect:
+  extends:
+    - .update-nspect
+  rules:
+    - if: $CI_COMMIT_TAG
+  variables:
+    OSRB_BUG_ID: "${OSRB_BUG_ID}"
+    ENV: "prod"
+    RELEASE_VERSION: "${CI_COMMIT_TAG}"
+    NSPECT_CLIENT_ID: "${NSPECT_PROD_CLIENT_ID}" 
+    NSPECT_CLIENT_SECRET: "${NSPECT_PROD_CLIENT_SECRET}"
+
+.publish-images:
+  stage: ngc-publish
   image:
     name: "${CNT_NGC_PUBLISH_IMAGE}"
     pull_policy: always
@@ -272,8 +323,10 @@ push-images-to-staging:
       - "${VERSION_FILE}"
       - "${PROJECT_NAME}.yaml"
 
-
-publish-images-to-ngc:
+ngc-image-publish:
+  needs:
+    - scan-images
+    - update-nspect
   extends:
     - .publish-images
   rules:
@@ -281,7 +334,10 @@ publish-images-to-ngc:
 
 # We create a dummy MR that exercises the publishing logic.
 # TODO: This MR should be closed automatically.
-publish-images-dummy:
+mock-image-publish:
+  needs:
+    - scan-images
+    - update-nspect-staging
   extends:
     - .publish-images
   variables:
